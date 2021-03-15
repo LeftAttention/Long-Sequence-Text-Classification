@@ -23,14 +23,15 @@ class Bert_Classification_Model(nn.Module):
     
 class RNNOverBERT(nn.Module):
 
-    def __init__(self, bertFineTuned, num_class, hidden_dim=100, yers=1, bidirectional=False):
+    def __init__(self, bertFineTuned, num_class, hidden_dim=100, n_layers=1, bidirectional=True, dropout=0.2):
         super(RNNOverBERT, self).__init__()
         self.hidden_dim = hidden_dim
-        self.bidirectional = bidirectional
         self.bertFineTuned = bertFineTuned
         
-        self.lstm = nn.LSTM(768, hidden_dim, num_layers=1, bidirectional=bidirectional)
-        self.out = nn.Linear(hidden_dim, num_class)
+        self.lstm = nn.LSTM(768, hidden_dim, num_layers=n_layers,
+                            bidirectional=bidirectional, dropout = 0 if n_layers < 2 else dropout)
+        self.out = nn.Linear(hidden_dim * 2 if bidirectional else hidden_dim, num_class)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, ids, mask, token_type_ids, lengt):
 
@@ -48,7 +49,10 @@ class RNNOverBERT(nn.Module):
             batch_emb, seq_lengths.cpu().numpy(), batch_first=False, enforce_sorted=False)
 
         packed_output, (h_t, h_c) = self.lstm(lstm_input, )  # (h_t, h_c))
+        
+        if self.lstm.bidirectional:
+            h_t = h_t.view(-1, self.hidden_dim * 2)
+        else:
+            h_t = h_t.view(-1, self.hidden_dim)
 
-        h_t = h_t.view(-1, self.hidden_dim)
-
-        return self.out(h_t)
+        return self.out(self.dropout(h_t))
